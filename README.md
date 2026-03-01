@@ -350,6 +350,33 @@ Requires confirmation. After purging reactions, run `/resync` to re-add bot reac
 
 ---
 
+#### `/deleteentries`
+> Permanently delete database entries by date range or by specific message IDs.
+
+Supports two modes (use one or the other, not both):
+
+**Mode 1 — Date Range:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `badge_name` | **Yes** | Badge type, or "All Badges" for all |
+| `start_date` | No | Delete entries from this date onward (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`) |
+| `end_date` | No | Delete entries up to this date (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`) |
+
+Shows a preview of how many entries will be affected before you confirm.
+
+**Mode 2 — Specific Entries:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `message_ids` | **Yes** | Comma-separated message IDs (e.g. `123456789,987654321`) |
+
+Deletes the exact entries matching those message IDs, regardless of badge type.
+
+**⚠️ Destructive — cannot be undone.** Requires confirmation. Leaderboards auto-refresh after deletion.
+
+---
+
 ### Admin Lookup Commands
 
 ---
@@ -417,6 +444,7 @@ Shows the same stats as `/mystats` but for any member. Admin only.
 | `/purge` | Elevated | Delete channel messages |
 | `/purgereacts` | Elevated | Remove reactions from entry messages |
 | `/purgeentries` | Admin | Hard-delete old DB entries |
+| `/deleteentries` | Admin | Delete entries by date range or message ID |
 | `/userstats` | Admin | View any member's stats |
 | `/settings` | Admin | Toggle bot features |
 
