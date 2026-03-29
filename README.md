@@ -106,6 +106,8 @@ The bot will reply with your progress:
 
 ⚠️ If you submit a duplicate stamp (one already approved), the bot will let you know it won't count again.
 
+✏️ **Editing entries:** If you edit your bingo entry message to change the stamp number, the bot automatically detects it and updates your progress. *(Note: If no tracking period is set via `/setperiod`, old entries from previous weeks will still remain on the leaderboard alongside your edited entry.)*
+
 ---
 
 ### Chatter Commands
@@ -275,7 +277,9 @@ Requires confirmation (✅ / ❌ buttons). Does **not** award the Badge Holder r
 
 For **bingo badges**: awards the role to the first 3 users who completed all 10 stamps.
 
-> 🤖 **Auto-conclude:** The bot automatically runs this every 30 minutes when a period's end date has passed.
+> 🤖 **Auto-conclude:** The bot automatically runs this every 30 minutes when a period's end date has passed (using local time UTC+8).
+
+> 🎯 **Bingo periods** always use a **7-day** interval, regardless of the global reset setting.
 
 Requires confirmation.
 
@@ -340,20 +344,38 @@ Requires confirmation. After purging reactions, run `/resync` to re-add bot reac
 ---
 
 #### `/purgeentries`
-> Permanently delete database entries — outside current period, by date range, or by specific message IDs.
+> Permanently delete database entries outside the current period.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `badge_name` | No | Badge type, or "All Badges" for all |
+
+**⚠️ Destructive — cannot be undone.** Hard-deletes all DB entries that fall outside the current period dates, plus any soft-deleted entries. Requires confirmation.
+
+---
+
+#### `/deleteentries`
+> Permanently delete database entries by date range or by specific message IDs.
+
+Supports two modes (use one or the other, not both):
+
+**Mode 1 — Date Range:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `badge_name` | **Yes** | Badge type, or "All Badges" for all |
 | `start_date` | No | Delete entries from this date onward (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`) |
 | `end_date` | No | Delete entries up to this date (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`) |
-| `message_ids` | No | Comma-separated message IDs (e.g. `123456789,987654321`) |
 
-**Three modes** (automatically detected from which parameters you provide):
+Shows a preview of how many entries will be affected before you confirm.
 
-1. **No dates/IDs** → Deletes all entries **outside** the current period (+ soft-deleted). Default cleanup mode.
-2. **`start_date` / `end_date`** → Deletes entries **within** the given date range. Requires `badge_name`. Shows preview count before confirming.
-3. **`message_ids`** → Deletes specific entries by message ID, regardless of badge type.
+**Mode 2 — Specific Entries:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `message_ids` | **Yes** | Comma-separated message IDs (e.g. `123456789,987654321`) |
+
+Deletes the exact entries matching those message IDs, regardless of badge type.
 
 **⚠️ Destructive — cannot be undone.** Requires confirmation. Leaderboards auto-refresh after deletion.
 
@@ -395,6 +417,7 @@ Shows the same stats as `/mystats` but for any member. Admin only.
 | **Leaderboard Updates** | ✅ On | Auto-update the stats channel embed on changes |
 | **Role Assignment** | ✅ On | Auto-assign/remove Challenger and Holder roles |
 | **Reaction Tracking** | ✅ On | Bot adds ❌/✅ placeholder reactions on new entries |
+| **Auto Welcome** | ❌ Off | Auto-welcome new trialists in chat |
 
 - Run `/settings` with no parameters to see all current toggle states.
 - Run `/settings <feature>` to see the current state of a specific feature.
@@ -425,9 +448,12 @@ Shows the same stats as `/mystats` but for any member. Admin only.
 | `/resync` | Admin | Sync DB with channel messages |
 | `/purge` | Elevated | Delete channel messages |
 | `/purgereacts` | Elevated | Remove reactions from entry messages |
-| `/purgeentries` | Admin | Hard-delete DB entries (outside period, date range, or by ID) |
+| `/purgeentries` | Admin | Hard-delete old DB entries |
+| `/deleteentries` | Admin | Delete entries by date range or message ID |
 | `/userstats` | Admin | View any member's stats |
 | `/settings` | Admin | Toggle bot features |
+| `/welcome` | Admin | Welcome members with Chatter mention |
+| `/setrole` | Admin | Set member to Chatter or Trainee |
 
 ### Permission Levels
 | Level | Who |
@@ -439,3 +465,54 @@ Shows the same stats as `/mystats` but for any member. Admin only.
 ---
 
 *Need help? Contact a server admin or check the entry channel pins for badge-specific instructions.*
+
+---
+
+## 🆕 New Member Auto-Role & Welcome
+
+When a new member joins the server, the bot automatically:
+1. **Assigns the Trialist role** (if `TRIALIST_ROLE_ID` is set in `.env`).
+2. **Sends a welcome message** (if the "Auto Welcome" feature is enabled via `/settings`).
+
+---
+
+## 💬 Smart Auto-Responses
+
+The bot can automatically reply to casual messages using regex pattern matching.
+
+**Built-in triggers:** greetings (hi/hello/hey), thanks, "who's your daddy", "who is the best", "good bot", "bad bot".
+
+**Features:**
+- 🔀 Randomly picks from multiple possible responses
+- 👑 Optional `creator_responses` list for special replies to the bot creator
+- 📝 Supports `{user}` (mention) and `{name}` (display name) placeholders
+- ⏱️ 5-second per-user cooldown to prevent spam
+- 🎯 Regex-based partial matching (or exact match with `"exact": True`)
+
+To customize triggers, edit the `CUSTOM_RESPONSES` list in `commands/badge_events.py`.
+
+---
+
+### `/welcome`
+> Send a welcome message for one or more members (admin only).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `member1` | **Yes** | Member to welcome |
+| `member2`–`member5` | No | Additional members to welcome |
+
+Sends:
+> 👋 Welcome @user1, @user2! Say hi to @Chatter!
+
+---
+
+### `/setrole`
+> Set a member to Chatter or Trainee role (admin only).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `member` | **Yes** | The member to change |
+| `role` | **Yes** | `Chatter` or `Trainee` |
+
+- Assigning **Chatter** automatically removes Trainee (and vice versa).
+- Requires `CHATTER_ROLE_ID` and/or `TRIALIST_ROLE_ID` in `.env`.
