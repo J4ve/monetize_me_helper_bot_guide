@@ -39,7 +39,7 @@ The bot runs a **badge competition system** with timed periods. Team members sub
 
 The bot supports two **modes** of badges:
 
-### Standard Badges
+### Standard Badges (14-day periods)
 Entry-count based competitions. The user with the most approved entries wins.
 
 | Badge | Description |
@@ -48,13 +48,21 @@ Entry-count based competitions. The user with the most approved entries wins.
 | **Renewal Reaper** | Close resubscriptions |
 | **Consistency Machine** | Consistent daily performance |
 | **Buyer Reviver** | Revive cold or lapsed buyers |
+| **Good Samaritan** | Helping & supporting others on the team |
+| **Bond Builder** | Building strong, lasting fan relationships |
 
-### Bingo Badge
+### Bingo Badge (7-day period)
 A stamp-collection challenge. Complete all 10 unique stamp challenges to win.
 
 | Badge | Description |
 |-------|-------------|
 | **Weekly Bingo** | Complete all 10 stamp challenges to earn a Spin of the Wheel |
+
+### Period Cadence
+- **Standard badges** run **14 days**, Monday → second Sunday after.
+- **Weekly Bingo** runs **7 days**, Monday → Sunday.
+- All periods snap to **Monday 00:00 PHT** (Philippines time, UTC+8).
+- Periods auto-conclude **on their end date**; the bot checks every 15 minutes.
 
 **Bingo Stamp Challenges:**
 | # | Challenge |
@@ -225,8 +233,9 @@ These commands require **admin, chat manager, bot admin, or command access** rol
 - **View current:** Run with no `start`/`end` to see current period dates.
 - **Set dates:** Provide `start` and/or `end` to update. Only entries within this window count.
 - **All Badges:** Choose "All Badges" to set the same dates across every badge.
+- **Auto-Monday alignment:** When `/reset` or `/conclude` advances a period (or when no period is set yet), the new period snaps to **Monday 00:00 PHT** automatically. Standard badges run 14 days, Weekly Bingo runs 7 days.
 
-> 💡 When a period end date is reached, the bot **auto-concludes** the badge every 30 minutes.
+> 💡 When a period end date is reached, the bot **auto-concludes** the badge within ~15 minutes (auto-conclude loop runs every 15 min).
 
 ---
 
@@ -241,10 +250,12 @@ These commands require **admin, chat manager, bot admin, or command access** rol
 - **Set:** Provide a date. Used as the fallback when no per-badge period is set.
 - **Clear:** Pass `clear` to remove it.
 
+> ⚠️ **Important — global start date is a fallback only.** If a badge has its **period start or period end** set (via `/setperiod`), the period wins and the global start date is **ignored** for that badge during `/resync`. To force a resync over a custom range without touching periods, use `/resync since_date:<date>` instead. See the `/resync` section for the full priority order.
+
 ---
 
-#### `/reset`
-> Reset a badge period — archive summary to history, soft-delete entries.
+#### `/reset` — archive-only
+> Post summary to history, soft-delete entries, advance period dates. **No role changes.**
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -253,33 +264,44 @@ These commands require **admin, chat manager, bot admin, or command access** rol
 **What it does:**
 1. Posts a full period summary embed to the badge's **history channel**.
 2. Soft-deletes all entries in the current period.
-3. Automatically advances period dates by the configured interval.
+3. Advances period dates Monday-aligned (next Mon → +6 days bingo, +13 days standard).
 
-Requires confirmation (✅ / ❌ buttons). Does **not** award the Badge Holder role — use `/conclude` for that.
+**What it does NOT do:**
+- Does **not** award 🏅 Badge Holder role.
+- Does **not** remove 🏆 Challenger roles.
+- Does **not** hard-delete old DB entries.
+
+**When to use:** Mid-period do-over, testing, or any time you want a clean slate without crowning a winner. For real end-of-period workflow use **`/conclude`**.
+
+Requires confirmation (✅ / ❌ buttons).
 
 ---
 
-#### `/conclude`
-> Conclude a period — award Badge Holder, remove Challengers, archive, and reset.
+#### `/conclude` — full end-of-period
+> Everything `/reset` does **plus** the role + cleanup work that ends a real competition.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `badge_name` | No | Badge type, or "All Badges" for all |
 
 **What it does (for each badge):**
-1. **Awards** the 🏅 Badge Holder role to the #1 ranked user(s). If there's a tie, all tied users receive the role.
-2. **Removes** the 🏆 Challenger role from everyone (period is over).
+1. **Awards** 🏅 Badge Holder role to the #1 ranked user(s). Ties: all tied users receive the role.
+2. **Removes** 🏆 Challenger role from everyone (period is over).
 3. **Posts** a full period summary to the history channel, including the winner announcement.
 4. **Sends** a conclusion announcement to the entry channel.
 5. **Soft-deletes** all entries in the period.
-6. **Hard-deletes** old entries outside the period (automatic cleanup).
-7. **Advances** the period dates to the next window.
+6. **Hard-deletes** old DB entries outside the period (auto cleanup — no `/deleteentries mode:outside-period` needed afterward).
+7. **Advances** period dates Monday-aligned to the next window.
 
-For **bingo badges**: awards the role to the first 3 users who completed all 10 stamps.
+For **bingo badges**: awards the role to the first 3 users who completed all 10 stamps. The history-channel summary highlights all 3 winners (no MVP line).
 
-> 🤖 **Auto-conclude:** The bot automatically runs this every 30 minutes when a period's end date has passed (using local time UTC+8).
+**When to use:** A competition period genuinely ends and you're ready to crown winners. This is the command auto-conclude calls.
 
-> 🎯 **Bingo periods** always use a **7-day** interval, regardless of the global reset setting.
+> 🤖 **Auto-conclude:** The bot automatically runs this every **15 minutes** when a period's end date has passed (using local time PHT / UTC+8). Errors are logged so the loop never gets stuck.
+
+> 🎯 **Bingo periods** always use a **7-day** interval. Standard badges use **14 days**. Both snap to Monday 00:00 PHT.
+
+> 📊 **Progress bar:** `/conclude` (and other long-running commands) edits a textual progress bar so you can watch each badge complete in real time. Tune the edit frequency with `/settings progress_interval:<N>` (default 25).
 
 Requires confirmation.
 
@@ -306,9 +328,35 @@ Requires confirmation.
 - Syncs DB approval state to match the actual reactions.
 - Refreshes the Challenger role and stats display.
 
-**Date range priority:** `since_date` parameter → per-badge period dates → global start date → all history.
+**Date range priority (READ THIS FIRST):**
 
-Use this after the bot was offline, or to fix any data inconsistencies.
+The resync uses **exactly one** date filter, picked in this order. Whichever applies first **completely ignores** the others:
+
+1. **`since_date` argument** — if you pass it. Wins over everything.
+2. **Per-badge period dates** (set via `/setperiod`). Wins over global start date.
+3. **Global start date** (set via `/setstartdate`). Used **only when both period start and period end are empty** for that badge.
+4. **All history** — only if none of the above are set.
+
+> ⚠️ **Common gotcha:** if you set a period to a *future* window (e.g. next Monday → next Sunday), `/resync` will scan that future window and find nothing. Setting `/setstartdate` does **not** override an already-set period — period wins. To pull entries from a different range without changing your period, use `since_date`:
+> ```
+> /resync badge_name: All Badges since_date: 2026-04-27
+> ```
+
+**What it does:**
+- Scans every message in the entry channel (within the date range chosen above).
+- Server-side filters via Discord's `after`/`before` so it only fetches in-period messages — fast even on huge channels.
+- Creates DB entries for any missing messages with images.
+- Fixes `created_at` timestamps on existing entries.
+- Removes stale/duplicate reactions, keeping only the authoritative manager reaction.
+- Ensures bot's ❌/✅ placeholder reactions are present.
+- Syncs DB approval state to match the actual reactions.
+- Refreshes the Challenger role and stats display.
+
+**Live progress bar:** While resyncing, the bot edits its message every N items (default 25, configurable via `/settings progress_interval`). For "All Badges" the bar shows badge X/Y plus per-message scan progress underneath, so you always know it's working.
+
+**Cancellable:** `/resync` registers in the task registry. If it's stuck or scanning the wrong range, run `/stoptask` to list, then `/stoptask task_id:<id>` to cancel.
+
+Use this after the bot was offline, or to fix any data inconsistencies. Approvals (✅) made in a prior period **automatically count** when an entry is included in a new period — no re-reaction is needed.
 
 ---
 
@@ -343,41 +391,24 @@ Requires confirmation. After purging reactions, run `/resync` to re-add bot reac
 
 ---
 
-#### `/purgeentries`
-> Permanently delete database entries outside the current period.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `badge_name` | No | Badge type, or "All Badges" for all |
-
-**⚠️ Destructive — cannot be undone.** Hard-deletes all DB entries that fall outside the current period dates, plus any soft-deleted entries. Requires confirmation.
-
----
-
 #### `/deleteentries`
-> Permanently delete database entries by date range or by specific message IDs.
-
-Supports two modes (use one or the other, not both):
-
-**Mode 1 — Date Range:**
+> Permanently delete database entries. Pick a `mode`. (Replaces the old `/purgeentries` — that command no longer exists.)
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `badge_name` | **Yes** | Badge type, or "All Badges" for all |
-| `start_date` | No | Delete entries from this date onward (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`) |
-| `end_date` | No | Delete entries up to this date (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`) |
+| `mode` | **Yes** | `outside-period`, `range`, or `ids` |
+| `badge_name` | depends | Required for `outside-period` and `range`; ignored for `ids` |
+| `start_date` | depends | Required for `range`; `YYYY-MM-DD` or `YYYY-MM-DD HH:MM` |
+| `end_date` | depends | Required for `range`; `YYYY-MM-DD` or `YYYY-MM-DD HH:MM` |
+| `message_ids` | depends | Required for `ids`; comma-separated (e.g. `123,456`) |
 
-Shows a preview of how many entries will be affected before you confirm.
+**Modes:**
 
-**Mode 2 — Specific Entries:**
+- **`mode:outside-period`** — Cleanup. Hard-deletes all entries that fall *outside* the current period for the chosen badge(s), plus any soft-deleted entries. Useful when `/conclude` didn't run for some reason. Pick a badge or "All Badges".
+- **`mode:range`** — Surgical. Hard-deletes entries *within* a date range for the chosen badge(s). Shows a preview count before you confirm. Pick a badge or "All Badges". At least one of `start_date` / `end_date` is required.
+- **`mode:ids`** — Targeted. Hard-deletes the exact entries matching the comma-separated `message_ids`. Badge selection is ignored.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `message_ids` | **Yes** | Comma-separated message IDs (e.g. `123456789,987654321`) |
-
-Deletes the exact entries matching those message IDs, regardless of badge type.
-
-**⚠️ Destructive — cannot be undone.** Requires confirmation. Leaderboards auto-refresh after deletion.
+**⚠️ Destructive — cannot be undone.** All modes require confirmation. Leaderboards auto-refresh after deletion. Run `/resync` afterward if channel reactions need cleanup.
 
 ---
 
@@ -397,6 +428,36 @@ Shows the same stats as `/mystats` but for any member. Admin only.
 
 ---
 
+### Stopping a Stuck or Long Task
+
+#### `/stoptask`
+> List or cancel a running long task (resync, conclude, reset, purgereacts).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `task_id` | No | Task ID to cancel. Omit to list all running tasks. |
+
+**Listing running tasks** (no arg):
+
+```
+🛠️ Running tasks:
+• `a1b2c3d4` — /resync All Badges (by jave, running 47s)
+• `e5f6g7h8` — /conclude weekly_bingo (by jave, running 12s)
+
+Cancel one: /stoptask task_id:<id>
+```
+
+**Cancelling** (`task_id:<id>`):
+- Sends `asyncio.Task.cancel()` to the running coroutine.
+- The task stops at its next `await` point and posts a final "⏹️ cancelled by admin" message in its own channel.
+- Database/role state already committed before the cancel point is **not** rolled back. Treat cancel as "stop here, don't undo".
+
+**When to use:** A `/resync All Badges` is taking forever, you want to abort. A `/conclude` was triggered with the wrong badge. A `/purgereacts` is hammering rate limits.
+
+The long-running command's final message includes a `task_id:` line at the end, so you can copy that ID directly.
+
+---
+
 ### Bot Configuration
 
 ---
@@ -408,6 +469,7 @@ Shows the same stats as `/mystats` but for any member. Admin only.
 |-----------|----------|-------------|
 | `feature` | No | Feature to toggle (omit to view all) |
 | `is_enabled` | No | `Enable` or `Disable` |
+| `progress_interval` | No | Numeric: edit progress bar every N items (default 25, must be > 0) |
 
 **Available feature toggles:**
 
@@ -418,10 +480,18 @@ Shows the same stats as `/mystats` but for any member. Admin only.
 | **Role Assignment** | ✅ On | Auto-assign/remove Challenger and Holder roles |
 | **Reaction Tracking** | ✅ On | Bot adds ❌/✅ placeholder reactions on new entries |
 | **Auto Welcome** | ❌ Off | Auto-welcome new trialists in chat |
+| **Auto Trialist** | ❌ Off | Auto-assign Trialist role on join |
 
-- Run `/settings` with no parameters to see all current toggle states.
+**Numeric settings:**
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **progress_interval** | 25 | How often progress bars edit during long-running commands (lower = smoother, but Discord rate-limits at ~5 edits/5sec). Used by `/resync`, `/reset` (all), `/conclude`, `/purgereacts`. |
+
+- Run `/settings` with no parameters to see all current toggle states **and** the current `progress_interval`.
 - Run `/settings <feature>` to see the current state of a specific feature.
-- Run `/settings <feature> Enable/Disable` to change it.
+- Run `/settings <feature> Enable/Disable` to change a toggle.
+- Run `/settings progress_interval:10` to make progress bars update more frequently.
 
 ---
 
@@ -448,10 +518,10 @@ Shows the same stats as `/mystats` but for any member. Admin only.
 | `/resync` | Admin | Sync DB with channel messages |
 | `/purge` | Elevated | Delete channel messages |
 | `/purgereacts` | Elevated | Remove reactions from entry messages |
-| `/purgeentries` | Admin | Hard-delete old DB entries |
-| `/deleteentries` | Admin | Delete entries by date range or message ID |
+| `/deleteentries` | Admin | Hard-delete DB entries (mode: outside-period, range, or ids) |
 | `/userstats` | Admin | View any member's stats |
 | `/settings` | Admin | Toggle bot features |
+| `/stoptask` | Admin | List / cancel running long tasks (resync, conclude, etc.) |
 | `/welcome` | Admin | Welcome members with Chatter mention |
 | `/setrole` | Admin | Set member to Chatter or Trainee |
 
@@ -462,9 +532,32 @@ Shows the same stats as `/mystats` but for any member. Admin only.
 | **Elevated** | Admin-level **or** Chatter role |
 | **Everyone** | Any server member |
 
+### Response Visibility (ephemeral vs public)
+
+Most commands now respond **publicly** so admin actions are visible/auditable. Only **personal noise** stays ephemeral (you-only).
+
+| Visibility | Commands |
+|------------|----------|
+| **Ephemeral (you only)** | `/mystats`, `/myentries`, `/bingostats`, plus all permission-denied / validation errors |
+| **Public** | Everything else: `/leaderboard`, `/badges`, `/bingostamps`, `/bingoleaderboard`, `/userstats`, `/setperiod`, `/setstartdate`, `/settings`, `/setrole`, all admin commands |
+
+> Validation/error messages (e.g. "Invalid date format", "You don't have permission") are always ephemeral so they don't clutter the channel.
+
 ---
 
 *Need help? Contact a server admin or check the entry channel pins for badge-specific instructions.*
+
+---
+
+## 🪵 Logs & Debuggability
+
+The bot writes structured logs to **both** stdout and `bot.log` (rotating, ~5 MB × 3).
+
+- **Format:** `2026-04-28 14:00:01 [INFO] mmhelper.commands.badge_commands: ...`
+- **Level:** controlled by `LOG_LEVEL` in `.env` — set to `DEBUG` for verbose traces, `INFO` (default), `WARNING`, or `ERROR`.
+- **Existing `print()` statements are kept** for backwards compatibility with existing operator habits; logs add structured detail on top.
+- **Auto-conclude debug:** every 15-minute tick logs which badges were checked and whether each was due. Errors are caught and logged but never break the loop.
+- **Resync debug:** start/end of each resync logs scanned/new/updated counts.
 
 ---
 
