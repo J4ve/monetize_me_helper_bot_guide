@@ -52,11 +52,11 @@ Entry-count based competitions. The user with the most approved entries wins.
 | **Bond Builder** | Building strong, lasting fan relationships |
 
 ### Bingo Badge (7-day period)
-A stamp-collection challenge. Complete all 10 unique stamp challenges to win.
+A stamp-collection challenge. Complete every **active** stamp for the week to win. The full set of possible stamps is the **compendium**; admins pick a subset (the **active set**) each week. Default = all stamps active.
 
 | Badge | Description |
 |-------|-------------|
-| **Weekly Bingo** | Complete all 10 stamp challenges to earn a Spin of the Wheel |
+| **Weekly Bingo** | Complete all active stamps to earn a Spin of the Wheel |
 
 ### Period Cadence
 - **Standard badges** run **14 days**, Monday → second Sunday after.
@@ -64,7 +64,7 @@ A stamp-collection challenge. Complete all 10 unique stamp challenges to win.
 - All periods snap to **Monday 00:00 PHT** (Philippines time, UTC+8).
 - Periods auto-conclude **on their end date**; the bot checks every 15 minutes.
 
-**Bingo Stamp Challenges:**
+**Bingo Stamp Compendium** (full pool — admins pick which are active each week):
 | # | Challenge |
 |---|-----------|
 | 1 | Close a Resubscription |
@@ -78,7 +78,14 @@ A stamp-collection challenge. Complete all 10 unique stamp challenges to win.
 | 9 | Share a Tip for Success |
 | 10 | Perfect Shift Handover |
 
-> 🏆 The first **3** people to complete all 10 stamps each period automatically earn the Weekly Bingo role!
+> ⭐ The first **N** people to complete every active stamp each period automatically earn the Weekly Bingo role. **N defaults to 5** but is configurable per-badge via `/setwinners`.
+
+**Active set vs. compendium:**
+- Active set is persisted across restarts. Default = all compendium stamps active.
+- Use `/setbingostamps numbers:1,3,5` to pick a custom subset.
+- Use `/randombingostamps count:5` to randomly select N from the compendium.
+- Use `/setbingostamps numbers:reset` to restore the default.
+- A submission for an **inactive** stamp is still saved but won't count toward completion — the bot replies with a warning.
 
 ---
 
@@ -167,9 +174,9 @@ No parameters. Shows a summary of every active badge with its entry channel, sta
 ---
 
 #### `/bingostamps`
-> View all 10 bingo stamp challenges and the reward.
+> View the bingo stamp compendium with the active set for this week.
 
-No parameters. Displays the full list of stamp challenges and the reward for completion.
+No parameters. Displays every stamp in the compendium with ⭐ next to ones active this week and ⬜ next to inactive ones. Also lists the active subset and reward count.
 
 ---
 
@@ -180,14 +187,16 @@ No parameters. Displays the full list of stamp challenges and the reward for com
 |-----------|----------|-------------|
 | `member` | No | Admin-only: view another member's bingo progress |
 
-Shows each of the 10 stamps with ✅ (completed), ⏳ (pending), or ⬜ (not started).
+Shows each **active** stamp with ✅ (completed), ⏳ (pending), or ⬜ (not started). Inactive-for-this-week stamps from the compendium are not rendered.
 
 ---
 
 #### `/bingoleaderboard`
 > Show the bingo stamp progress leaderboard.
 
-No parameters. Displays all participants with a visual progress bar showing their completed, pending, and remaining stamps. Winners (first 3 to complete all stamps) get a 🏆 icon.
+No parameters. Displays all participants with a visual progress bar over the **active stamp set**, showing completed / pending / remaining cells. Winners (first **N** to complete every active stamp — N is the winner count configured by `/setwinners`, default 5) get an ⭐ suffix; extra completers past the cutoff get 🎉.
+
+> **Ranking rule**: completion order is decided by the **submission date** of the message that gives a user their LAST required stamp. Approval order does not matter. If User A has 9 stamps done early but submits their 10th late, and User B submits all 10 earlier, User B wins. Rejected entries are ignored entirely.
 
 ---
 
@@ -293,7 +302,7 @@ Requires confirmation (✅ / ❌ buttons).
 6. **Hard-deletes** old DB entries outside the period (auto cleanup — no `/deleteentries mode:outside-period` needed afterward).
 7. **Advances** period dates Monday-aligned to the next window.
 
-For **bingo badges**: awards the role to the first 3 users who completed all 10 stamps. The history-channel summary highlights all 3 winners (no MVP line).
+For **bingo badges**: awards the role to the first **N** users who completed every active stamp (N = winner count, default 5, set via `/setwinners`). The history-channel summary highlights all winners (no MVP line).
 
 **When to use:** A competition period genuinely ends and you're ready to crown winners. This is the command auto-conclude calls.
 
@@ -458,6 +467,64 @@ The long-running command's final message includes a `task_id:` line at the end, 
 
 ---
 
+### Bingo Configuration (impl17)
+
+---
+
+#### `/setbingostamps`
+> Set which stamps are active this week.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `numbers` | Yes | Comma-separated stamp IDs (e.g. `1,3,5,7,9`). Pass `reset` to restore the default (all stamps active). |
+
+**Examples:**
+- `/setbingostamps numbers:1,3,5,7,9` — only those 5 stamps count toward bingo this week
+- `/setbingostamps numbers:reset` — back to the default full active set
+
+IDs not in the compendium are rejected. Duplicates are dropped. Auto-refreshes the stats-channel leaderboard.
+
+---
+
+#### `/randombingostamps`
+> Randomly pick N stamps from the compendium as the active set.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `count` | Yes | How many stamps to randomly select (must be ≤ compendium size) |
+
+Posts the chosen list publicly. Auto-refreshes the stats-channel leaderboard.
+
+---
+
+#### `/setwinners`
+> Set the top-N winner count for a badge (default 5).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `count` | Yes | How many top-ranked users count as winners (> 0) |
+| `badge_name` | No | Badge type (or "All Badges" to apply to every active badge) |
+
+Affects:
+- Bingo auto-award (first N completers receive the Weekly Bingo role)
+- `/conclude` (first N completers get the holder role; standard badges still award tied #1)
+- Leaderboard ⭐ markers (ranks ≤ N get the select emoji)
+
+---
+
+#### `/resendleaderboard`
+> Post a fresh leaderboard message at the bottom of the stats channel.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `badge_name` | No | Badge type (or "All Badges") |
+
+**Use when** you want to add an announcement message above the leaderboard, or the existing leaderboard message scrolled too far up. Old leaderboard message is **not deleted** — it just stops auto-updating. Future auto-updates target the new message.
+
+**Permission:** Elevated (Chatter role + admin).
+
+---
+
 ### Bot Configuration
 
 ---
@@ -521,6 +588,10 @@ The long-running command's final message includes a `task_id:` line at the end, 
 | `/deleteentries` | Admin | Hard-delete DB entries (mode: outside-period, range, or ids) |
 | `/userstats` | Admin | View any member's stats |
 | `/settings` | Admin | Toggle bot features |
+| `/setbingostamps` | Admin | Pick which stamps are active this week (or `reset`) |
+| `/randombingostamps` | Admin | Randomly pick N stamps from compendium as active |
+| `/setwinners` | Admin | Set top-N winner count per badge (default 5) |
+| `/resendleaderboard` | Elevated | Post fresh leaderboard message at bottom of stats channel |
 | `/stoptask` | Admin | List / cancel running long tasks (resync, conclude, etc.) |
 | `/welcome` | Admin | Welcome members with Chatter mention |
 | `/setrole` | Admin | Set member to Chatter or Trainee |
@@ -539,7 +610,7 @@ Most commands now respond **publicly** so admin actions are visible/auditable. O
 | Visibility | Commands |
 |------------|----------|
 | **Ephemeral (you only)** | `/mystats`, `/myentries`, `/bingostats`, plus all permission-denied / validation errors |
-| **Public** | Everything else: `/leaderboard`, `/badges`, `/bingostamps`, `/bingoleaderboard`, `/userstats`, `/setperiod`, `/setstartdate`, `/settings`, `/setrole`, all admin commands |
+| **Public** | Everything else: `/leaderboard`, `/badges`, `/bingostamps`, `/bingoleaderboard`, `/userstats`, `/setperiod`, `/setstartdate`, `/settings`, `/setrole`, `/setbingostamps`, `/randombingostamps`, `/setwinners`, `/resendleaderboard`, all admin commands |
 
 > Validation/error messages (e.g. "Invalid date format", "You don't have permission") are always ephemeral so they don't clutter the channel.
 
