@@ -19,17 +19,18 @@ Welcome to the **Monetize Me Helper** bot! This bot manages badge competitions, 
   - [Cleanup Commands](#cleanup-commands)
   - [Admin Lookup Commands](#admin-lookup-commands)
   - [Bot Configuration](#bot-configuration)
+- [Fan Recall (Payday & Play Later)](#-fan-recall-payday--play-later)
 
 ---
 
 ## How It Works
 
-The bot runs a **badge competition system** with timed periods. Team members submit screenshot entries in designated channels, managers approve or reject them with reactions, and the bot tracks everything on a live leaderboard. At the end of each period, the top performer earns the **Badge Holder** role, and a new period begins.
+The bot runs a **badge competition system** with timed periods. Team members submit screenshot entries in designated channels, approvers (chat managers and Senior Chatters) approve or reject them with reactions, and the bot tracks everything on a live leaderboard. At the end of each period, the top performer earns the **Badge Holder** role, and a new period begins.
 
 **Key concepts:**
 - **Period** — A competition window with a start and end date. Only entries within the period count toward the leaderboard.
 - **Entry** — A message with an image posted in a badge's entry channel. The bot automatically detects and tracks it.
-- **Approval** — A manager reacts with ✅ to approve an entry, or ❌ to reject it.
+- **Approval** — An **approver** (chat manager or **Senior Chatter**) reacts with ✅ to approve an entry, or ❌ to reject it.
 - **Challenger** — The user currently ranked #1 on the leaderboard gets the Challenger role.
 - **Badge Holder** — Awarded to the winner(s) when a period is concluded.
 
@@ -78,7 +79,7 @@ A stamp-collection challenge. Complete every **active** stamp for the week to wi
 | 9 | Share a Tip for Success |
 | 10 | Perfect Shift Handover |
 
-> ⭐ The first **N** people to complete every active stamp each period automatically earn the Weekly Bingo role. **N defaults to 5** but is configurable per-badge via `/setwinners`.
+> ⭐ The first **N** people to complete every active stamp each period automatically earn the Weekly Bingo role. **N defaults to 5** and is configurable via `/setwinners` (choose **Weekly Bingo** as the target).
 
 **Active set vs. compendium:**
 - Active set is persisted across restarts. Default = all compendium stamps active.
@@ -166,6 +167,32 @@ Shows rank, approved count, pending, rejected, and approval rate for every parti
 
 ---
 
+#### `/nextchatter`
+> Show who is scheduled next, pulled live from the HR app.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `count` | No | How many upcoming shifts to show (1-10, default 1) |
+
+The bot has no schedule data of its own — this reads the HR app's **published** schedule and shows the next chatter on deck: name, shift slot, date, and start time in the agency timezone. With `count`, lists the following shifts too.
+
+Requires `HR_API_URL` + `HR_API_SECRET` in the bot's `.env` (must match the HR app's `DISCORD_INTEGRATION_SECRET`). If the HR app is unreachable it replies with an ephemeral error rather than failing silently. Response is **public**; errors are ephemeral.
+
+---
+
+#### `/scriptboard`
+> Show the scriptboard leaderboard for the current pay cycle, pulled from HR.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `count` | No | How many chatters to show (1-25, default 10) |
+
+Ranks chatters by completed script attempts this cycle: completed/attempts, completion rate, and total sales. Same numbers as the app's scriptboard (shares the HR aggregation). Response is **public**; errors are ephemeral.
+
+The bot can also **auto-post** this board to a channel once a day — set `SCRIPTBOARD_CHANNEL_ID` (plus optional `SCRIPTBOARD_POST_HOUR`, default 9, in the community's local tz) in the bot's `.env`. Leave the channel unset to disable the scheduled post; the command still works on demand.
+
+---
+
 #### `/badges`
 > List all active badge types, their channels, period dates, and roles.
 
@@ -204,19 +231,21 @@ No parameters. Displays all participants with a visual progress bar over the **a
 
 ### Approving & Rejecting Entries
 
-Managers approve or reject entries using **reactions** on entry messages:
+**Approvers** — anyone with the **Chat Manager** or **Senior Chatter** role — approve or reject entries using **reactions** on entry messages:
 
 | Reaction | Action |
 |----------|--------|
 | ✅ | **Approve** the entry — counts toward the leaderboard |
 | ❌ | **Reject** the entry — does not count |
 
+**Who can approve:** anyone with the **Chat Manager** (`CHAT_MANAGER_ROLE_ID`) or **Senior Chatter** (`SENIOR_CHATTER_ROLE_ID`) role. Approval-only — it does **not** grant access to admin slash commands.
+
 **How it works:**
 - When a new entry is posted, the bot adds both ❌ and ✅ reactions as placeholders.
-- A manager clicks ✅ to approve or ❌ to reject.
-- The **latest manager reaction** is authoritative — if multiple managers react, the last one wins. Previous manager reactions are automatically removed.
+- An approver clicks ✅ to approve or ❌ to reject.
+- The **latest approver reaction** is authoritative — if multiple approvers react, the last one wins. Previous approver reactions are automatically removed.
 - Removing your ✅ or ❌ reaction resets the entry back to **pending**.
-- Non-managers who try to react with ✅/❌ will have their reaction automatically removed.
+- Users without an approver role who try to react with ✅/❌ will have their reaction automatically removed.
 
 **Live updates:**
 - The **stats channel leaderboard** updates automatically after every approval/rejection.
@@ -228,6 +257,8 @@ Managers approve or reject entries using **reactions** on entry messages:
 
 These commands require **admin, chat manager, bot admin, or command access** role.
 
+> 🧩 **"All Badges" = standalone Badges only.** Across the admin action commands (`/setperiod`, `/conclude`, `/reset`, `/resync`, `/resendleaderboard`, `/purgereacts`, `/deleteentries`), choosing **"All Badges"** operates on the six standalone Badges and **excludes Weekly Bingo** — Bingo keeps its own Monday→Sunday week and is set individually by picking it from the dropdown. (Read-only views like `/leaderboard`, `/mystats`, `/userstats` still include Bingo in their "All Badges" summary.)
+
 ---
 
 #### `/setperiod`
@@ -235,13 +266,13 @@ These commands require **admin, chat manager, bot admin, or command access** rol
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `badge_name` | No | Badge type, or "All Badges" to set all at once |
+| `badge_name` | No | Badge type, or "All Badges" (standalone Badges only — excludes Weekly Bingo) |
 | `start` | No | Period start date (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`) |
 | `end` | No | Period end date (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`) |
 
 - **View current:** Run with no `start`/`end` to see current period dates.
 - **Set dates:** Provide `start` and/or `end` to update. Only entries within this window count.
-- **All Badges:** Choose "All Badges" to set the same dates across every badge.
+- **All Badges:** Choose "All Badges" to set the same dates across all six **standalone Badges** at once. **Weekly Bingo is excluded** — it keeps its own Monday→Sunday week; set it individually by choosing it from the dropdown.
 - **Auto-Monday alignment:** When `/reset` or `/conclude` advances a period (or when no period is set yet), the new period snaps to **Monday 00:00 PHT** automatically. Standard badges run 14 days, Weekly Bingo runs 7 days.
 
 > 💡 When a period end date is reached, the bot **auto-concludes** the badge within ~15 minutes (auto-conclude loop runs every 15 min).
@@ -294,7 +325,7 @@ Requires confirmation (✅ / ❌ buttons).
 | `badge_name` | No | Badge type, or "All Badges" for all |
 
 **What it does (for each badge):**
-1. **Awards** 🏅 Badge Holder role to the #1 ranked user(s). Ties: all tied users receive the role.
+1. **Awards** 🏅 Badge Holder role to the winner(s) — by default the #1 ranked user(s) (ties share the role). If a winner count is set for the badge via `/setwinners`, the **top-N** ranked users are awarded instead.
 2. **Removes** 🏆 Challenger role from everyone (period is over).
 3. **Posts** a full period summary to the history channel, including the winner announcement.
 4. **Sends** a conclusion announcement to the entry channel.
@@ -302,7 +333,7 @@ Requires confirmation (✅ / ❌ buttons).
 6. **Hard-deletes** old DB entries outside the period (auto cleanup — no `/deleteentries mode:outside-period` needed afterward).
 7. **Advances** period dates Monday-aligned to the next window.
 
-For **bingo badges**: awards the role to the first **N** users who completed every active stamp (N = winner count, default 5, set via `/setwinners`). The history-channel summary highlights all winners (no MVP line).
+For **Weekly Bingo**: awards the role to the first **N** users who completed every active stamp (N = winner count, default 5, set via `/setwinners`). The history-channel summary highlights all winners (no MVP line).
 
 **When to use:** A competition period genuinely ends and you're ready to crown winners. This is the command auto-conclude calls.
 
@@ -498,17 +529,22 @@ Posts the chosen list publicly. Auto-refreshes the stats-channel leaderboard.
 ---
 
 #### `/setwinners`
-> Set the top-N winner count for a badge (default 5).
+> Set the **winner count** for a Badge or Bingo (admin only).
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `count` | Yes | How many top-ranked users count as winners (> 0) |
-| `badge_name` | No | Badge type (or "All Badges" to apply to every active badge) |
+| `badge_name` | No | Target: a specific Badge, **Weekly Bingo**, or **"All Badges"** (the standalone group — Bingo excluded). Omit = All Badges. |
 
-Affects:
-- Bingo auto-award (first N completers receive the Weekly Bingo role)
-- `/conclude` (first N completers get the holder role; standard badges still award tied #1)
-- Leaderboard ⭐ markers (ranks ≤ N get the select emoji)
+Stores a winner count **per target**. Pick the target from the dropdown:
+
+- **A standalone Badge** (or **"All Badges"** to set the six at once) — switches the badge from crowning the tied #1 to awarding **and** highlighting the **top-N**:
+  - `/conclude` gives the 🏅 Badge Holder role to the top-N ranked users.
+  - The leaderboard highlights the top-N: 🥇🥈🥉 for ranks 1–3, then 🏅 for ranks 4…N.
+  - **Default (no count set):** unchanged — crown the tied #1, show 🥇🥈🥉 for the top 3.
+- **Weekly Bingo** — the first N completers get the role and the ⭐ marker on the bingo leaderboard (default 5).
+
+> "All Badges" sets the count for the six standalone Badges only and **does not** touch Weekly Bingo — set Bingo by choosing it from the dropdown.
 
 ---
 
@@ -570,6 +606,8 @@ Affects:
 | `/mystats` | View your personal stats |
 | `/myentries` | List your entries with status |
 | `/leaderboard` | View detailed leaderboard |
+| `/nextchatter` | Who is scheduled next (from HR schedule) |
+| `/scriptboard` | Scriptboard leaderboard, current cycle (from HR) |
 | `/badges` | List all active badges and channels |
 | `/bingostamps` | View bingo stamp challenges |
 | `/bingostats` | View your bingo progress |
@@ -590,7 +628,7 @@ Affects:
 | `/settings` | Admin | Toggle bot features |
 | `/setbingostamps` | Admin | Pick which stamps are active this week (or `reset`) |
 | `/randombingostamps` | Admin | Randomly pick N stamps from compendium as active |
-| `/setwinners` | Admin | Set top-N winner count per badge (default 5) |
+| `/setwinners` | Admin | Set the top-N winner count for a Badge or Bingo (per-target) |
 | `/resendleaderboard` | Elevated | Post fresh leaderboard message at bottom of stats channel |
 | `/stoptask` | Admin | List / cancel running long tasks (resync, conclude, etc.) |
 | `/welcome` | Admin | Welcome members with Chatter mention |
@@ -610,7 +648,7 @@ Most commands now respond **publicly** so admin actions are visible/auditable. O
 | Visibility | Commands |
 |------------|----------|
 | **Ephemeral (you only)** | `/mystats`, `/myentries`, `/bingostats`, plus all permission-denied / validation errors |
-| **Public** | Everything else: `/leaderboard`, `/badges`, `/bingostamps`, `/bingoleaderboard`, `/userstats`, `/setperiod`, `/setstartdate`, `/settings`, `/setrole`, `/setbingostamps`, `/randombingostamps`, `/setwinners`, `/resendleaderboard`, all admin commands |
+| **Public** | Everything else: `/leaderboard`, `/badges`, `/bingostamps`, `/bingoleaderboard`, `/userstats`, `/setperiod`, `/setstartdate`, `/settings`, `/setrole`, `/setbingostamps`, `/randombingostamps`, `/setwinners`, `/resendleaderboard`, `/nextchatter`, `/scriptboard`, all admin commands |
 
 > Validation/error messages (e.g. "Invalid date format", "You don't have permission") are always ephemeral so they don't clutter the channel.
 
@@ -680,3 +718,48 @@ Sends:
 
 - Assigning **Chatter** automatically removes Trainee (and vice versa).
 - Requires `CHATTER_ROLE_ID` and/or `TRIALIST_ROLE_ID` in `.env`.
+
+---
+
+## 🔔 Fan Recall (Payday & Play Later)
+
+A separate feature for following up with fans who will buy later. Chatters tag a
+fan, the bot reminds the **RM Team** at the right time, the first chatter claims it
+by reacting 🙋, and the bot cleans up anything that does not convert. There is a
+full beginner walkthrough in [RECALL_SOP.md](RECALL_SOP.md) and an admin reference in
+[RECALL_GUIDE.md](RECALL_GUIDE.md). Quick version below.
+
+**Two types, each in its own channel:**
+- **💸 Payday** posts in the payday recall channel. The fan buys on a date. With no
+  time given, the team is reminded twice that day (default 10:00 and 16:00 PHT); the
+  second reminder only fires if nobody claimed the first.
+- **🍿 Play Later** posts in the play later recall channel. The fan is free later
+  today at a set time; the team is pinged 15 minutes before (default).
+
+### Chatter commands
+
+| Command | What it does |
+|---|---|
+| `/payday fan: creator: date: [time:]` | Schedule a payday recall (`date` is `YYYY-MM-DD`). |
+| `/playlater fan: creator: time: [date:]` | Schedule a later-today recall. `time` is `HH:MM` 24h and required. |
+| `/list-tags [chatter:] [fan:] [creator:]` | List active recalls. |
+| `/sold fan: creator:` | Mark a recall converted. |
+| `/clear-tag fan: creator: [reason:]` | Remove a recall early. |
+| `/earlybuy fan: creator:` | Payday early buy: deny and defer once, allow on the 2nd insist. |
+
+- **creator** (the model the fan belongs to) is **required** wherever you enter a fan
+  name. It keeps two fans with the same name under different models apart.
+- **Claim** a posted recall by reacting 🙋 (first valid reactor wins, then it locks).
+  **Remove** your 🙋 to release it back to the team.
+- Each recall post shows a live countdown to its time.
+
+### Admin: `/setrecall` and `/purge-recalls`
+
+- `/setrecall` configures channels (general, payday, play later, log), roles (RM Team,
+  shift lead, claim roles), windows (play later lead and expiry, payday expiry,
+  escalate-after), and the two payday reminder hours. Run with no options to see the
+  current config. All values are live and stored in `bot_state`.
+- `/purge-recalls scope: [older_than_hours:] [creator:] [fan:] [chatter:] [hard_delete:]`
+  bulk-removes recalls (for example stale or test ones), with a confirm step. Default
+  scope is `unclaimed` and default mode soft-closes (keeps the audit row); set
+  `hard_delete: true` to delete rows.
